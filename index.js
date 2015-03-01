@@ -3,13 +3,26 @@ var Parser = require('htmlparser2').Parser;
 
 var elementStack = [];
 
-function ItemList(parent) {
+var SVG_NS = 'http://www.w3.org/2000/svg';
+
+function ItemList(parent, tag) {
     this.parent = parent;
     this.content = '';
     this.spacer = '';
     this.indent = parent ? parent.indent : '';
     this.isFirstItem = true;
+    this.tag = tag;
 }
+
+ItemList.prototype.getNameSpace = function (space) {
+    if (this.tag === 'svg') {
+       return SVG_NS;
+    } else if (this.parent) {
+       return this.parent.getNameSpace()
+    }
+    
+    return null;
+};
 
 ItemList.prototype.addSpace = function (space) {
     this.spacer += space;
@@ -43,7 +56,7 @@ module.exports = function(html, cb) {
 
     var parser = new Parser({
         onopentag: function (name, attribs) {
-            currentItemList = new ItemList(currentItemList);
+            currentItemList = new ItemList(currentItemList, name);
             elementStack.unshift([ name, attribs ]);
         },
         ontext: function (text) {
@@ -74,13 +87,16 @@ module.exports = function(html, cb) {
         onclosetag: function (tagname) {
             var element = elementStack.shift();
             var elementContent = currentItemList.content + currentItemList.spacer;
-
+            
+            var namespace = currentItemList.getNameSpace();
+            var ns = (namespace !== null) ? ', namespace: "'+namespace+'"' : '';
+            
             currentItemList = currentItemList.parent;
 
             var indent = currentItemList.indent;
 
             var attribs = element[1];
-
+            
             var id = attribs['id'];
             var idSuffix = id !== undefined ? '#' + id : '';
             delete attribs['id'];
@@ -93,7 +109,7 @@ module.exports = function(html, cb) {
 
             var item = 'h(' + JSON.stringify(element[0] + idSuffix + classSuffix) + (
                 attrPairs.length
-                    ? ", { attributes: {\n" + indent + '    ' + attrPairs.join(",\n" + indent + '    ') + "\n" + indent + "} }"
+                    ? ", { attributes: {\n" + indent + '    ' + attrPairs.join(",\n" + indent + '    ') + "\n" + indent + "}"+ns+" }"
                     : ''
             ) + (
                 elementContent.length
